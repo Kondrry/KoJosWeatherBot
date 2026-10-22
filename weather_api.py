@@ -3,7 +3,7 @@ from typing import Any
 import aiohttp
 
 
-async def get_weather(city: str) -> dict[str, Any] | None:
+async def get_weather_current(city: str) -> dict[str, Any] | None:
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.get(
@@ -70,3 +70,17 @@ WEATHER_DESCRIPTIONS = {
     96: "Гроза с небольшим градом",
     99: "Гроза с сильным градом",
 }
+
+def get_wind_direction(degrees):
+    if degrees is None:
+        return "Неизвестно"
+
+    directions = [
+        "Север (С)", "Северо-северо-восток (ССВ)", "Северо-восток (СВ)", "Востоко-северо-восток (ВСВ)",
+        "Восток (В)", "Востоко-юго-восток (ВЮВ)", "Юго-восток (ЮВ)", "Юго-юго-восток (ЮЮВ)",
+        "Юг (Ю)", "Юго-юго-запад (ЮЮЗ)", "Юго-запад (ЮЗ)", "Западо-юго-запад (ЗЮЗ)",
+        "Запад (З)", "Западо-северо-запад (ЗСЗ)", "Северо-запад (СЗ)", "Северо-северо-запад (ССЗ)"
+    ]
+
+    index = int((degrees + 11.25) / 22.5) % 16
+    return directions[index]
