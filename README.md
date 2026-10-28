@@ -1,4 +1,19 @@
 ## Описание будет добавлено позже...
+# Version 1.2.0
+
+### Changes 1.2.0
+#### eng:
+- Started work on weekly weather forecasts; the feature will be improved in future updates.
+- Added the option to change the city while keeping the weekly forecast mode.
+- Expanded the help message with available commands and usage instructions.
+- Configured Open-Meteo requests to use certifi certificates for SSL verification.
+
+#### ru:
+- Начата работа над прогнозом погоды на неделю; функция будет дорабатываться в следующих обновлениях.
+- Добавлена возможность сменить город, сохранив режим недельного прогноза.
+- Дополнена справка со списком команд и инструкциями по использованию.
+- Настроена проверка SSL-сертификатов certifi для запросов к Open-Meteo.
+
 # Version 1.1.1
 
 ### Changes 1.1.1

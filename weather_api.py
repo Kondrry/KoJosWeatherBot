@@ -1,11 +1,18 @@
 from typing import Any
+import ssl
 
 import aiohttp
+import certifi
 
 
 async def get_weather_current(city: str) -> dict[str, Any] | None:
     timeout = aiohttp.ClientTimeout(total=10)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    connector = aiohttp.TCPConnector(ssl=ssl_context)
+    async with aiohttp.ClientSession(
+        timeout=timeout,
+        connector=connector,
+    ) as session:
         async with session.get(
             "https://geocoding-api.open-meteo.com/v1/search",
         params={"name": city, "count": 1,"language": "ru"}
@@ -40,6 +47,49 @@ async def get_weather_current(city: str) -> dict[str, Any] | None:
     }
 
 
+async def get_weather_week(city: str) -> dict[str, Any] | None:
+    timeout = aiohttp.ClientTimeout(total=10)
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    connector = aiohttp.TCPConnector(ssl=ssl_context)
+    async with aiohttp.ClientSession(
+        timeout=timeout,
+        connector=connector,
+    ) as session:
+        async with session.get(
+            "https://geocoding-api.open-meteo.com/v1/search",
+        params={"name": city, "count": 1,"language": "ru"}
+        ) as response:
+            response.raise_for_status()
+            geocoding_data = await response.json()
+
+        locations = geocoding_data.get("results")
+        if not locations:
+            return None
+
+        location = locations[0]
+        async with session.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": location["latitude"],
+                "longitude": location["longitude"],
+                "daily": (
+                    "temperature_2m_min,temperature_2m_max,apparent_temperature_min,apparent_temperature_max,"
+                    "precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant,weather_code"
+                ),
+                "wind_speed_unit": "ms",
+                "timezone": "auto",
+            }
+        ) as response:
+            response.raise_for_status()
+            forecast_data = await response.json()
+            
+        return {
+            "location": location,
+            "daily": forecast_data["daily"],
+        }
+
+
+
 WEATHER_DESCRIPTIONS = {
     0: "Ясно",
     1: "Преимущественно ясно",
@@ -70,6 +120,7 @@ WEATHER_DESCRIPTIONS = {
     96: "Гроза с небольшим градом",
     99: "Гроза с сильным градом",
 }
+
 
 def get_wind_direction(degrees):
     if degrees is None:
