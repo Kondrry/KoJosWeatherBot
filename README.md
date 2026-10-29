@@ -1,6 +1,6 @@
 ## Описание будет добавлено позже...
 # Version 1.2.1
-## @KoJosWeatherBot telegram bot
+## @KoJosWeatherBot telegram bot in development
 
 
 
