@@ -1,6 +1,8 @@
 ## Описание будет добавлено позже...
 # Version 1.2.0
 
+### @KoJosWeatherBot telegram bot
+
 ### Changes 1.2.0
 #### eng:
 - Started work on weekly weather forecasts; the feature will be improved in future updates.
