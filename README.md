@@ -1,7 +1,7 @@
 ## Описание будет добавлено позже...
 # Version 1.2.1
 ## @KoJosWeatherBot telegram bot in development
-
+## *My *First Project* In **Python***
 
 
 ### Changes 1.2.1
