@@ -1,6 +1,6 @@
+from datetime import date
 from typing import Any
 import ssl
-
 import aiohttp
 import certifi
 
@@ -31,7 +31,7 @@ async def get_weather_current(city: str) -> dict[str, Any] | None:
                 "latitude": location["latitude"],
                 "longitude": location["longitude"],
                 "current": (
-                    "temperature_2m,relative_humidity_2m,is_day,"
+                    "temperature_2m,apparent_temperature,relative_humidity_2m,is_day,"
                     "weather_code,wind_speed_10m,wind_direction_10m"
                 ),
                 "wind_speed_unit": "ms",
@@ -88,7 +88,7 @@ async def get_weather_week(city: str) -> dict[str, Any] | None:
             "daily": forecast_data["daily"],
         }
 
-
+WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
 WEATHER_DESCRIPTIONS = {
     0: "Ясно",
@@ -135,3 +135,8 @@ def get_wind_direction(degrees):
 
     index = int((degrees + 11.25) / 22.5) % 16
     return directions[index]
+
+
+def get_weekday(date_str: str) -> str:
+    day = date.fromisoformat(date_str)
+    return WEEKDAYS[day.weekday()]

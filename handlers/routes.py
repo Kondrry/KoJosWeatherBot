@@ -5,7 +5,8 @@ from weather_api import (
     get_weather_current,
     get_weather_week,
     WEATHER_DESCRIPTIONS,
-    get_wind_direction
+    get_wind_direction,
+    get_weekday
 )
 from aiogram import Router, F
 from aiogram.filters import Command
@@ -25,14 +26,12 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
-# 213 line check todo
-
 # Keyboards
 
 def get_help_reply_keyboard():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Узнать погоду"), KeyboardButton(text="Узнать погоду на неделю(WIP)")],
+            [KeyboardButton(text="Узнать погоду"), KeyboardButton(text="Узнать погоду на неделю")],
             [KeyboardButton(text="О боте"), KeyboardButton(text="Помощь"), KeyboardButton(text="Перезапустить бота")]
         ],
         resize_keyboard=True
@@ -50,11 +49,85 @@ def get_about_inline_keyboard():
 
     return keyboard
 
+def get_weather_week_keyboard(day_index: int, dates: list[str]):
+    day_index %= len(dates)
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="<", callback_data="previous_day"), InlineKeyboardButton(text=get_weekday(dates[day_index]), callback_data=f"day_{day_index}"), InlineKeyboardButton(text=">", callback_data="next_day")],
+            [InlineKeyboardButton(text="Изменить город", callback_data="change_city_week")],
+        ]
+    )
+
+    return keyboard
+
+def format_weather_week_day(place_name: str, daily: dict[str, Any], day_index: int) -> str:
+    weather_code = daily["weather_code"][day_index]
+    wind_direction = get_wind_direction(daily["wind_direction_10m_dominant"][day_index])
+    date = daily["time"][day_index]
+    
+    return (
+        f'🌤️ Погода в городе {place_name} на {get_weekday(date)}, {date}:\n\n'
+        f'Температура: от {daily["temperature_2m_min"][day_index]}°C '
+        f'до {daily["temperature_2m_max"][day_index]}°C\n'
+        f'Ощущаемая температура: от {daily["apparent_temperature_min"][day_index]}°C '
+        f'до {daily["apparent_temperature_max"][day_index]}°C\n'
+        f'Осадки: {daily["precipitation_sum"][day_index]} мм\n'
+        f'Ветер: до {daily["wind_speed_10m_max"][day_index]} м/с, '
+        f'{wind_direction}\n'
+        f'Погода: {WEATHER_DESCRIPTIONS.get(weather_code, "Неизвестные условия")}\n\n'
+        f'ℹИсточник: Open-Meteo.'
+    )
+
+async def show_weather_week_day(callback: CallbackQuery, state: FSMContext, day_index: int) -> None:
+    data = await state.get_data()
+    daily = data.get("week_daily")
+    place_name = data.get("week_place_name")
+    if not daily or not place_name or not daily.get("time"):
+        await callback.answer("Данные прогноза устарели. Запросите прогноз заново.", show_alert=True)
+        return
+
+    dates = daily["time"]
+    day_index %= len(dates)
+    await state.update_data(day_index=day_index)
+    await callback.message.edit_text(
+        format_weather_week_day(place_name, daily, day_index),
+        reply_markup=get_weather_week_keyboard(day_index, dates)
+    )
+    await callback.answer()
+
 # Callback queries
+
+@router.callback_query(lambda c: c.data in {"next_day", "previous_day"})
+async def process_change_day(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    day_index = data.get("day_index", 0)
+
+    step = 1 if callback.data == "next_day" else -1
+    daily = data.get("week_daily")
+    if not daily or not daily.get("time"):
+        await callback.answer("Данные прогноза устарели. Запросите прогноз заново.", show_alert=True)
+        return
+
+    day_index = (day_index + step) % len(daily["time"])
+    await show_weather_week_day(callback, state, day_index)
+
+    
+@router.callback_query(F.data.startswith("day_"))
+async def process_select_day(callback: CallbackQuery, state: FSMContext):
+    day_index = int(callback.data.rsplit("_", 1)[1])
+    data = await state.get_data()
+    if not data.get("week_daily"):
+        await show_weather_week_day(callback, state, day_index)
+        return
+    if day_index == data.get("day_index", 0):
+        await callback.answer("Этот день уже выбран.")
+        return
+    await show_weather_week_day(callback, state, day_index)
 
 @router.callback_query(lambda c: c.data == "more_info")
 async def process_more_info(callback: CallbackQuery):
-    await callback.message.answer("ℹ️ Здесь будет дополнительная информация о боте. (WIP)")
+    await callback.message.answer("ℹ️ Дополнительная информация о боте.")
     await callback.answer()
 
 @router.callback_query(lambda c: c.data == "cancel")
@@ -139,7 +212,7 @@ async def weather(msg: Message, state: FSMContext):
 # Weather(week)
 
 @router.message(Command("weather_week"))
-@router.message(F.text.lower() == "узнать погоду на неделю(WIP)")
+@router.message(F.text.lower() == "узнать погоду на неделю")
 async def weather_week(msg: Message, state: FSMContext):
     await msg.answer(
         'Введите название города, чтобы узнать погоду на неделю в нём:\n\nВведите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
@@ -189,13 +262,15 @@ async def process_weather(msg: Message, state: FSMContext):
         place_name = ", ".join(parts)
         # --//
 
+        date = current["time"].split("T")[0]
+
         await msg.answer(
-            f'🌤️ Погода в городе {place_name}:\n\n'
+            f'🌤️ Погода в городе {place_name} на {get_weekday(date)}, {date}:\n\n'
             f'Температура: {current["temperature_2m"]}°C\n'
+            f'Ощущается как: {current["apparent_temperature"]}°C\n'
             f'Влажность воздуха: {current["relative_humidity_2m"]}%\n'
             f'Время суток: {"день" if current["is_day"] else "ночь"}\n'
-            f'Скорость ветра: {current["wind_speed_10m"]} м/с\n'
-            f'Направление ветра: {wind_direction}\n'
+            f'Ветер: {current["wind_speed_10m"]} м/с, {wind_direction}\n'
             f'Погода: {WEATHER_DESCRIPTIONS.get(weather_code, "Неизвестные условия")}\n\n'
             f'ℹИсточник: Open-Meteo.',
             reply_markup=InlineKeyboardMarkup(
@@ -212,7 +287,6 @@ async def process_weather(msg: Message, state: FSMContext):
     await state.clear()
 
 
-# TODO: оформить прогноз отдельно для каждого дня недели и убрать надпись WIP в команде
 @router.message(Form.city_week, F.text)
 async def process_weather_week(msg: Message, state: FSMContext):
     city = msg.text.strip()
@@ -230,13 +304,6 @@ async def process_weather_week(msg: Message, state: FSMContext):
 
         location = weather_info["location"]
         daily = weather_info["daily"]
-        weather_code = [
-            WEATHER_DESCRIPTIONS.get(code, "Неизвестные условия") for code in daily["weather_code"]
-        ]
-        wind_direction = [
-            get_wind_direction(direction) for direction in daily["wind_direction_10m_dominant"]
-        ]
-        
 
         parts = []
         for part in (
@@ -245,21 +312,19 @@ async def process_weather_week(msg: Message, state: FSMContext):
         ):
             if part:
                 parts.append(part)
-
         place_name = ", ".join(parts)
+        await state.clear()
+        await state.update_data(
+            week_daily=daily,
+            week_place_name=place_name,
+            day_index=0,
+        )
 
         await msg.answer(
-            f'🌤️ Погода на неделю в городе {place_name}:\n\n'
-            f'Температура: от {daily["temperature_2m_min"]}°C до {daily["temperature_2m_max"]}°C\n'
-            f'Ощущаемая температура: от {daily["apparent_temperature_min"]}°C до {daily["apparent_temperature_max"]}°C\n'
-            f'Суммарное количество осадков: {daily["precipitation_sum"]} мм\n'
-            f'Ветер: до {daily["wind_speed_10m_max"]} м/с\n'
-            f'Направление ветра: {wind_direction}\n'
-            f'Погода: {weather_code}\n\n'
-            f'ℹИсточник: Open-Meteo.',
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="Изменить город", callback_data="change_city_week")]])
+            format_weather_week_day(place_name, daily, 0),
+            reply_markup=get_weather_week_keyboard(0, daily["time"])
         )
+
     except (aiohttp.ClientError, asyncio.TimeoutError):
         logger.exception("Не удалось получить прогноз погоды на неделю для города %r", city)
         await msg.answer(
@@ -267,8 +332,6 @@ async def process_weather_week(msg: Message, state: FSMContext):
             'Пожалуйста, попробуйте снова позже.'
         )
         return
-
-    await state.clear()
 
 # Other
 

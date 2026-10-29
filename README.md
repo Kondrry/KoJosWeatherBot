@@ -1,7 +1,20 @@
 ## Описание будет добавлено позже...
-# Version 1.2.0
+# Version 1.2.1
+## @KoJosWeatherBot telegram bot
 
-### @KoJosWeatherBot telegram bot
+
+
+### Changes 1.2.1
+#### eng:
+- You can now browse the weekly forecast one day at a time.
+- The forecast updates when you switch days.
+- AI helped with part of this update; I'm reviewing and cleaning up the code.
+
+#### ru:
+- Теперь прогноз на неделю можно листать по дням.
+- При переключении обновляется погода для выбранного дня.
+- В части изменений помог ИИ - сейчас я разбираюсь в коде и привожу его в порядок.
+
 
 ### Changes 1.2.0
 #### eng:
@@ -16,7 +29,6 @@
 - Дополнена справка со списком команд и инструкциями по использованию.
 - Настроена проверка SSL-сертификатов certifi для запросов к Open-Meteo.
 
-# Version 1.1.1
 
 ### Changes 1.1.1
 #### eng:
