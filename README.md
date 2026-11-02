@@ -1,7 +1,23 @@
 ## Описание будет добавлено позже...
-# Version 1.2.1
+# Version 1.2.2
 ## @KoJosWeatherBot telegram bot in development
+## *My *First Project* In **Python***
 
+
+### Changes 1.2.2
+#### eng:
+- Weather requests now retry after temporary server or connection errors.
+- The bot gives clearer messages for common weather API errors.
+- Renamed the help button and command to "Menu" and `/menu`.
+- Made wind speed and direction clearer in forecast messages.
+- Removed outdated WIP and TODO labels.
+
+#### ru:
+- Бот повторяет запросы погоды при временных ошибках сервера или соединения.
+- Добавлены более понятные сообщения для распространённых ошибок API погоды.
+- Кнопка и команда справки переименованы в «Меню» и `/menu`.
+- Скорость и направление ветра теперь отображаются понятнее.
+- Убраны устаревшие пометки WIP и TODO.
 
 
 ### Changes 1.2.1

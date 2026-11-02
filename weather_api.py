@@ -1,8 +1,33 @@
 from datetime import date
+import asyncio
 from typing import Any
 import ssl
 import aiohttp
 import certifi
+
+
+async def get_json_with_retry(session: aiohttp.ClientSession, url: str, params: dict[str, Any]) -> dict[str, Any]:
+    retry_statuses = {429, 500, 502, 503, 504}
+    max_retries = 3
+
+    for attempt in range(max_retries):
+        try:
+            async with session.get(url, params=params) as response:
+                if response.status not in retry_statuses:
+                    response.raise_for_status()
+                    print(f"Successfully fetched data from {url, params} on attempt {attempt + 1}")
+                    return await response.json()
+
+                if attempt == max_retries - 1:
+                    response.raise_for_status()
+        except (aiohttp.ClientConnectionError, asyncio.TimeoutError):
+            if attempt == max_retries - 1:
+                raise
+
+        if attempt < max_retries - 1:
+            await asyncio.sleep(2 ** attempt)
+
+    raise RuntimeError(f"Failed to fetch data from {url} after {max_retries} attempts.")
 
 
 async def get_weather_current(city: str) -> dict[str, Any] | None:
@@ -13,19 +38,19 @@ async def get_weather_current(city: str) -> dict[str, Any] | None:
         timeout=timeout,
         connector=connector,
     ) as session:
-        async with session.get(
+        geocoding_data = await get_json_with_retry(
+            session,
             "https://geocoding-api.open-meteo.com/v1/search",
-        params={"name": city, "count": 1,"language": "ru"}
-        ) as response:
-            response.raise_for_status()
-            geocoding_data = await response.json()
+            params={"name": city, "count": 1, "language": "ru"},
+        )
 
         locations = geocoding_data.get("results")
         if not locations:
             return None
 
         location = locations[0]
-        async with session.get(
+        forecast_data = await get_json_with_retry(
+            session,
             "https://api.open-meteo.com/v1/forecast",
             params={
                 "latitude": location["latitude"],
@@ -37,9 +62,7 @@ async def get_weather_current(city: str) -> dict[str, Any] | None:
                 "wind_speed_unit": "ms",
                 "timezone": "auto",
             },
-        ) as response:
-            response.raise_for_status()
-            forecast_data = await response.json()
+        )
 
     return {
         "location": location,
@@ -55,19 +78,19 @@ async def get_weather_week(city: str) -> dict[str, Any] | None:
         timeout=timeout,
         connector=connector,
     ) as session:
-        async with session.get(
+        geocoding_data = await get_json_with_retry(
+            session,
             "https://geocoding-api.open-meteo.com/v1/search",
-        params={"name": city, "count": 1,"language": "ru"}
-        ) as response:
-            response.raise_for_status()
-            geocoding_data = await response.json()
+            params={"name": city, "count": 1, "language": "ru"},
+        )
 
         locations = geocoding_data.get("results")
         if not locations:
             return None
 
         location = locations[0]
-        async with session.get(
+        forecast_data = await get_json_with_retry(
+            session,
             "https://api.open-meteo.com/v1/forecast",
             params={
                 "latitude": location["latitude"],
@@ -78,10 +101,8 @@ async def get_weather_week(city: str) -> dict[str, Any] | None:
                 ),
                 "wind_speed_unit": "ms",
                 "timezone": "auto",
-            }
-        ) as response:
-            response.raise_for_status()
-            forecast_data = await response.json()
+            },
+        )
             
         return {
             "location": location,
@@ -121,6 +142,16 @@ WEATHER_DESCRIPTIONS = {
     99: "Гроза с сильным градом",
 }
 
+WEATHER_API_ERROR_MESSAGES = {
+    429: "Слишком много запросов к сервису погоды. Подождите немного и попробуйте снова.",
+    500: "В сервисе погоды произошла внутренняя ошибка. Попробуйте позже.",
+    502: "Сервис погоды получил некорректный ответ. Попробуйте позже.",
+    503: "Сервис погоды перегружен или временно недоступен. Попробуйте позже.",
+    504: "Сервис погоды не ответил вовремя. Попробуйте позже.",
+}
+WEATHER_API_DEFAULT_ERROR_MESSAGE = (
+    "❌ Не удалось связаться с сервисом погоды. Пожалуйста, попробуйте позже."
+)
 
 def get_wind_direction(degrees):
     if degrees is None:

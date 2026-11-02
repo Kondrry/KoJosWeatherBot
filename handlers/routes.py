@@ -5,8 +5,10 @@ from weather_api import (
     get_weather_current,
     get_weather_week,
     WEATHER_DESCRIPTIONS,
+    WEATHER_API_ERROR_MESSAGES,
+    WEATHER_API_DEFAULT_ERROR_MESSAGE,
     get_wind_direction,
-    get_weekday
+    get_weekday,
 )
 from aiogram import Router, F
 from aiogram.filters import Command
@@ -28,11 +30,11 @@ logger = logging.getLogger(__name__)
 
 # Keyboards
 
-def get_help_reply_keyboard():
+def get_menu_reply_keyboard():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Узнать погоду"), KeyboardButton(text="Узнать погоду на неделю")],
-            [KeyboardButton(text="О боте"), KeyboardButton(text="Помощь"), KeyboardButton(text="Перезапустить бота")]
+            [KeyboardButton(text="О боте"), KeyboardButton(text="Меню"), KeyboardButton(text="Перезапустить бота")]
         ],
         resize_keyboard=True
     )
@@ -73,8 +75,8 @@ def format_weather_week_day(place_name: str, daily: dict[str, Any], day_index: i
         f'Ощущаемая температура: от {daily["apparent_temperature_min"][day_index]}°C '
         f'до {daily["apparent_temperature_max"][day_index]}°C\n'
         f'Осадки: {daily["precipitation_sum"][day_index]} мм\n'
-        f'Ветер: до {daily["wind_speed_10m_max"][day_index]} м/с, '
-        f'{wind_direction}\n'
+        f'Ветер: до {daily["wind_speed_10m_max"][day_index]} м/с,\n'
+        f'Направление ветра: {wind_direction}\n'
         f'Погода: {WEATHER_DESCRIPTIONS.get(weather_code, "Неизвестные условия")}\n\n'
         f'ℹИсточник: Open-Meteo.'
     )
@@ -161,18 +163,18 @@ async def process_change_city_week(callback: CallbackQuery, state: FSMContext):
 async def start(msg: Message, state: FSMContext):
     await state.clear()
     await msg.answer(
-        '👋 Привет! Я бот, который *поможет* тебе узнать погоду в любом городе. 🌤️\n\n💬 Напиши /help для помощи или нажми кнопку ниже',
+        '👋 Привет! Я бот, который *поможет* тебе узнать погоду в любом городе. 🌤️\n\n💬 Напиши /menu, чтобы открыть меню, или нажми кнопку ниже',
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="Помощь")]], resize_keyboard=True)
+            keyboard=[[KeyboardButton(text="Меню")]], resize_keyboard=True)
     )
 
 
-# Help
+# Menu
 
-@router.message(Command("help"))
-@router.message(F.text.lower() == "помощь")
-async def help(msg: Message, state: FSMContext):
+@router.message(Command("menu"))
+@router.message(F.text.lower() == "меню")
+async def menu(msg: Message, state: FSMContext):
     await state.clear()
     await msg.answer(
         '📋 <b>Как пользоваться ботом</b>\n\n'
@@ -182,11 +184,11 @@ async def help(msg: Message, state: FSMContext):
         '<b>/weather</b> — узнать текущую погоду\n'
         '<b>/weather_week</b> — узнать прогноз на неделю\n'
         '<b>/about</b> — информация о боте\n'
-        '<b>/help</b> — показать эту справку\n'
+        '<b>/menu</b> — показать это меню\n'
         '<b>/cancel</b> — отменить ввод города\n\n'
-        'Можно также использовать кнопки меню: «Узнать погоду», «Узнать погоду на неделю», «О боте», «Помощь» и «Перезапустить бота».\n\n'
+        'Можно также использовать кнопки меню: «Узнать погоду», «Узнать погоду на неделю», «О боте», «Меню» и «Перезапустить бота».\n\n'
         'После получения прогноза нажми «Изменить город», чтобы узнать погоду в другом городе.',
-        parse_mode="HTML", reply_markup=get_help_reply_keyboard())
+        parse_mode="HTML", reply_markup=get_menu_reply_keyboard())
 
 # About
 
@@ -270,18 +272,25 @@ async def process_weather(msg: Message, state: FSMContext):
             f'Ощущается как: {current["apparent_temperature"]}°C\n'
             f'Влажность воздуха: {current["relative_humidity_2m"]}%\n'
             f'Время суток: {"день" if current["is_day"] else "ночь"}\n'
-            f'Ветер: {current["wind_speed_10m"]} м/с, {wind_direction}\n'
+            f'Ветер: {current["wind_speed_10m"]} м/с\n'
+            f'Направление ветра: {wind_direction}\n'
             f'Погода: {WEATHER_DESCRIPTIONS.get(weather_code, "Неизвестные условия")}\n\n'
             f'ℹИсточник: Open-Meteo.',
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[[InlineKeyboardButton(text="Изменить город", callback_data="change_city")]])
         )
+    except aiohttp.ClientResponseError as error:
+        logger.exception("Ошибка сервиса погоды для города %r", city)
+        await msg.answer(
+            WEATHER_API_ERROR_MESSAGES.get(
+                error.status,
+                WEATHER_API_DEFAULT_ERROR_MESSAGE,
+            )
+        )
+        return
     except (aiohttp.ClientError, asyncio.TimeoutError):
         logger.exception("Не удалось получить прогноз погоды для города %r", city)
-        await msg.answer(
-            '❌ Не удалось связаться с сервисом погоды. '
-            'Пожалуйста, попробуйте снова позже.'
-        )
+        await msg.answer(WEATHER_API_DEFAULT_ERROR_MESSAGE)
         return
 
     await state.clear()
@@ -325,21 +334,27 @@ async def process_weather_week(msg: Message, state: FSMContext):
             reply_markup=get_weather_week_keyboard(0, daily["time"])
         )
 
+    except aiohttp.ClientResponseError as error:
+        logger.exception("Ошибка сервиса погоды для города %r", city)
+        await msg.answer(
+            WEATHER_API_ERROR_MESSAGES.get(
+                error.status,
+                WEATHER_API_DEFAULT_ERROR_MESSAGE,
+            )
+        )
+        return
     except (aiohttp.ClientError, asyncio.TimeoutError):
         logger.exception("Не удалось получить прогноз погоды на неделю для города %r", city)
-        await msg.answer(
-           '❌ Не удалось связаться с сервисом погоды. '
-            'Пожалуйста, попробуйте снова позже.'
-        )
+        await msg.answer(WEATHER_API_DEFAULT_ERROR_MESSAGE)
         return
 
 # Other
-
-@router.message()
-async def handle_message(msg: Message):
-    await msg.answer('❌ Извини, я пока не умею обрабатывать сообщения, кроме команд. Пожалуйста, просмотри список доступных команд:\n /help 🌤️')
 
 @router.message(Command("cancel"))
 async def cancel(msg: Message, state: FSMContext):
     await state.clear()
     await msg.answer('❌ Действие отменено.')
+
+@router.message()
+async def handle_message(msg: Message):
+    await msg.answer('❌ Извини, я пока не умею обрабатывать сообщения, кроме команд. Пожалуйста, просмотри список доступных команд:\n /menu 🌤️')
