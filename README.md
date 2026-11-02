@@ -11,12 +11,14 @@
 - The bot gives clearer messages for common weather API errors.
 - Renamed the help button and command to "Menu" and `/menu`.
 - Made wind speed and direction clearer in forecast messages.
+- Old weekly forecast buttons now show a stale-data notice instead of changing the latest forecast.
 
 #### ru:
 - Бот повторяет запросы погоды при временных ошибках сервера или соединения.
 - Добавлены более понятные сообщения для распространённых ошибок API погоды.
 - Кнопка и команда справки переименованы в «Меню» и `/menu`.
 - Скорость и направление ветра теперь отображаются понятнее.
+- Старые кнопки недельного прогноза теперь сообщают, что данные устарели, вместо изменения нового прогноза.
 
 
 ### Changes 1.2.1

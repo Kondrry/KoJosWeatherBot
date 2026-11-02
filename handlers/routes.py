@@ -85,7 +85,13 @@ async def show_weather_week_day(callback: CallbackQuery, state: FSMContext, day_
     data = await state.get_data()
     daily = data.get("week_daily")
     place_name = data.get("week_place_name")
-    if not daily or not place_name or not daily.get("time"):
+    if (
+        not callback.message
+        or callback.message.message_id != data.get("week_message_id")
+        or not daily
+        or not place_name
+        or not daily.get("time")
+    ):
         await callback.answer("Данные прогноза устарели. Запросите прогноз заново.", show_alert=True)
         return
 
@@ -205,6 +211,7 @@ async def about(msg: Message, state: FSMContext):
 @router.message(Command('weather'))
 @router.message(F.text.lower() == "узнать погоду")
 async def weather(msg: Message, state: FSMContext):
+        await state.clear()
         await msg.answer(
             'Введите название города, чтобы узнать погоду в нём:\n\nВведите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[[InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]])
@@ -216,6 +223,7 @@ async def weather(msg: Message, state: FSMContext):
 @router.message(Command("weather_week"))
 @router.message(F.text.lower() == "узнать погоду на неделю")
 async def weather_week(msg: Message, state: FSMContext):
+    await state.clear()
     await msg.answer(
         'Введите название города, чтобы узнать погоду на неделю в нём:\n\nВведите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[[InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]])
@@ -293,9 +301,6 @@ async def process_weather(msg: Message, state: FSMContext):
         await msg.answer(WEATHER_API_DEFAULT_ERROR_MESSAGE)
         return
 
-    await state.clear()
-
-
 @router.message(Form.city_week, F.text)
 async def process_weather_week(msg: Message, state: FSMContext):
     city = msg.text.strip()
@@ -329,10 +334,11 @@ async def process_weather_week(msg: Message, state: FSMContext):
             day_index=0,
         )
 
-        await msg.answer(
+        forecast_message = await msg.answer(
             format_weather_week_day(place_name, daily, 0),
             reply_markup=get_weather_week_keyboard(0, daily["time"])
         )
+        await state.update_data(week_message_id=forecast_message.message_id)
 
     except aiohttp.ClientResponseError as error:
         logger.exception("Ошибка сервиса погоды для города %r", city)
