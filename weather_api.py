@@ -15,7 +15,7 @@ async def get_json_with_retry(session: aiohttp.ClientSession, url: str, params: 
             async with session.get(url, params=params) as response:
                 if response.status not in retry_statuses:
                     response.raise_for_status()
-                    print(f"Successfully fetched data from {url, params} on attempt {attempt + 1}")
+                    print(f"//Successfully fetched data from: \n{url, params}\nOn attempt {attempt + 1}//\n")
                     return await response.json()
 
                 if attempt == max_retries - 1:
@@ -27,7 +27,7 @@ async def get_json_with_retry(session: aiohttp.ClientSession, url: str, params: 
         if attempt < max_retries - 1:
             await asyncio.sleep(2 ** attempt)
 
-    raise RuntimeError(f"Failed to fetch data from {url} after {max_retries} attempts.")
+    raise RuntimeError(f"//Failed to fetch data from \n{url, params}\nAfter {max_retries} attempts.//\n")
 
 
 async def get_weather_current(city: str) -> dict[str, Any] | None:

@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 def get_menu_reply_keyboard():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Узнать погоду"), KeyboardButton(text="Узнать погоду на неделю")],
+            [KeyboardButton(text="Узнать погоду")],
             [KeyboardButton(text="О боте"), KeyboardButton(text="Меню"), KeyboardButton(text="Перезапустить бота")]
         ],
         resize_keyboard=True
@@ -147,7 +147,7 @@ async def process_cancel(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(lambda c: c.data == "change_city")
 async def process_change_city(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(
-        'Введите новое название города, чтобы узнать погоду в нём:\n\nВведите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
+        '🌦️ Введите новое название города, чтобы узнать погоду в нём:\n\n❌ Введите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[[InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]])
     )
     await state.set_state(Form.city)
@@ -156,9 +156,27 @@ async def process_change_city(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(lambda c: c.data == "change_city_week")
 async def process_change_city_week(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(
-        'Введите новое название города, чтобы узнать погоду на неделю в нём:\n\nВведите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
+        '📅 Введите новое название города, чтобы узнать погоду на неделю в нём:\n\n❌ Введите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[[InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]])
     )
+    await state.set_state(Form.city_week)
+    await callback.answer()
+
+@router.callback_query(lambda c: c.data == "weather_now")
+async def process_weather_now(callback: CallbackQuery, state: FSMContext):
+    await callback.message.answer(
+        '🌦️ Введите название города, чтобы узнать погоду в нём:\n\n❌ Введите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
+                 inline_keyboard=[[InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]])
+         )
+    await state.set_state(Form.city)
+    await callback.answer()
+
+@router.callback_query(lambda c: c.data == 'weather_week')
+async def process_weather_week(callback: CallbackQuery, state: FSMContext):
+    await callback.message.answer(
+        '📅 Введите название города, чтобы узнать погоду на неделю в нём:\n\n❌ Введите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
+             inline_keyboard=[[InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]])
+     )
     await state.set_state(Form.city_week)
     await callback.answer()
 
@@ -206,29 +224,46 @@ async def about(msg: Message, state: FSMContext):
         f'👋 Привет, {msg.from_user.first_name}! \n\n🌤️ Это бот для получения информации о погоде.\n\n👨‍💻 Мой создатель - @nokojo81\n\n⏳ Информация будет добавлена позже.',
         reply_markup=get_about_inline_keyboard())
 
-# Weather(now)
+# Weather
 
 @router.message(Command('weather'))
 @router.message(F.text.lower() == "узнать погоду")
 async def weather(msg: Message, state: FSMContext):
-        await state.clear()
-        await msg.answer(
-            'Введите название города, чтобы узнать погоду в нём:\n\nВведите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]])
-        )
-        await state.set_state(Form.city)
-
-# Weather(week)
-
-@router.message(Command("weather_week"))
-@router.message(F.text.lower() == "узнать погоду на неделю")
-async def weather_week(msg: Message, state: FSMContext):
     await state.clear()
     await msg.answer(
-        'Введите название города, чтобы узнать погоду на неделю в нём:\n\nВведите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]])
+        '🌤️На какой период показать погоду?\n'
+        'Введите /cancel, чтобы отменить действие.',
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Погода сейчас", callback_data="weather_now"), InlineKeyboardButton(text="Погода на неделю", callback_data="weather_week")],
+                [InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]
+            ]
+        )
     )
-    await state.set_state(Form.city_week)
+
+# Weather(now) outdated
+
+# @router.message(Command('weather'))
+# @router.message(F.text.lower() == "узнать погоду")
+# async def weather(msg: Message, state: FSMContext):
+#         await state.clear()
+#         await msg.answer(
+#             'Введите название города, чтобы узнать погоду в нём:\n\nВведите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
+#                 inline_keyboard=[[InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]])
+#         )
+#         await state.set_state(Form.city)
+
+# Weather(week) outdated
+
+# @router.message(Command("weather_week"))
+# @router.message(F.text.lower() == "узнать погоду на неделю")
+# async def weather_week(msg: Message, state: FSMContext):
+#     await state.clear()
+#     await msg.answer(
+#         'Введите название города, чтобы узнать погоду на неделю в нём:\n\nВведите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
+#             inline_keyboard=[[InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]])
+#     )
+#     await state.set_state(Form.city_week)
 
 # Processes
 

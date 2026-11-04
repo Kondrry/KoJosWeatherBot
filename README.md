@@ -1,4 +1,5 @@
 ## Описание будет добавлено позже...
+
 # Version 1.2.2
 ## @KoJosWeatherBot telegram bot in development
 ## *My *First Project* In **Python***
@@ -7,6 +8,7 @@
 
 ### Changes 1.2.2
 #### eng:
+- The `/weather` command now lets you choose between current weather and a weekly forecast.
 - Weather requests now retry after temporary server or connection errors.
 - The bot gives clearer messages for common weather API errors.
 - Renamed the help button and command to "Menu" and `/menu`.
@@ -14,6 +16,7 @@
 - Old weekly forecast buttons now show a stale-data notice instead of changing the latest forecast.
 
 #### ru:
+- Команда `/weather` теперь позволяет выбрать между текущей погодой и прогнозом на неделю.
 - Бот повторяет запросы погоды при временных ошибках сервера или соединения.
 - Добавлены более понятные сообщения для распространённых ошибок API погоды.
 - Кнопка и команда справки переименованы в «Меню» и `/menu`.
