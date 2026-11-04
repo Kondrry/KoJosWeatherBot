@@ -28,13 +28,14 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
-# Keyboards
+# Keyboards - start
 
 def get_menu_reply_keyboard():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Узнать погоду")],
-            [KeyboardButton(text="О боте"), KeyboardButton(text="Меню"), KeyboardButton(text="Перезапустить бота")]
+            [KeyboardButton(text="О боте"), KeyboardButton(text="Меню"), KeyboardButton(text="Перезапустить бота")],
+            [KeyboardButton(text="Настройки")]
         ],
         resize_keyboard=True
     )
@@ -62,6 +63,10 @@ def get_weather_week_keyboard(day_index: int, dates: list[str]):
     )
 
     return keyboard
+
+# Keyboards - end
+
+# Weather formatting and display functions - start
 
 def format_weather_week_day(place_name: str, daily: dict[str, Any], day_index: int) -> str:
     weather_code = daily["weather_code"][day_index]
@@ -104,7 +109,9 @@ async def show_weather_week_day(callback: CallbackQuery, state: FSMContext, day_
     )
     await callback.answer()
 
-# Callback queries
+# Weather formatting and display functions - end
+
+# Callback queries: CQ - start
 
 @router.callback_query(lambda c: c.data in {"next_day", "previous_day"})
 async def process_change_day(callback: CallbackQuery, state: FSMContext):
@@ -180,6 +187,11 @@ async def process_weather_week(callback: CallbackQuery, state: FSMContext):
     await state.set_state(Form.city_week)
     await callback.answer()
 
+# CQ - end
+
+
+# Commands - start
+
 # Start
 
 @router.message(Command("start"))
@@ -202,16 +214,15 @@ async def menu(msg: Message, state: FSMContext):
     await state.clear()
     await msg.answer(
         '📋 <b>Как пользоваться ботом</b>\n\n'
-        'Узнай погоду с помощью команды или кнопки меню, затем отправь название города, например: <i>Москва</i> или <i>New York</i>.\n\n'
+        'Нажми «Узнать погоду» или введи /weather, выбери текущую погоду либо прогноз на неделю и отправь название города, например: <i>Москва</i> или <i>New York</i>.\n\n'
         '🌤️ <b>Команды</b>\n'
         '<b>/start</b> — запустить или перезапустить бота\n'
-        '<b>/weather</b> — узнать текущую погоду\n'
-        '<b>/weather_week</b> — узнать прогноз на неделю\n'
+        '<b>/weather</b> — выбрать текущую погоду или прогноз на неделю\n'
+        '<b>/settings</b> — открыть настройки (раздел в разработке)\n'
         '<b>/about</b> — информация о боте\n'
         '<b>/menu</b> — показать это меню\n'
-        '<b>/cancel</b> — отменить ввод города\n\n'
-        'Можно также использовать кнопки меню: «Узнать погоду», «Узнать погоду на неделю», «О боте», «Меню» и «Перезапустить бота».\n\n'
-        'После получения прогноза нажми «Изменить город», чтобы узнать погоду в другом городе.',
+        '<b>/cancel</b> — отменить текущее действие\n\n'
+        'Также можно воспользоваться кнопками «Узнать погоду», «Настройки», «О боте» и «Меню». Во время прогноза нажми «Изменить город», чтобы выбрать другой город.',
         parse_mode="HTML", reply_markup=get_menu_reply_keyboard())
 
 # About
@@ -235,37 +246,30 @@ async def weather(msg: Message, state: FSMContext):
         'Введите /cancel, чтобы отменить действие.',
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="Погода сейчас", callback_data="weather_now"), InlineKeyboardButton(text="Погода на неделю", callback_data="weather_week")],
-                [InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]
+                [InlineKeyboardButton(text="Погода сейчас", callback_data="weather_now"),
+                 InlineKeyboardButton(text="Погода на неделю", callback_data="weather_week")],
             ]
         )
     )
 
-# Weather(now) outdated
+# Settings
 
-# @router.message(Command('weather'))
-# @router.message(F.text.lower() == "узнать погоду")
-# async def weather(msg: Message, state: FSMContext):
-#         await state.clear()
-#         await msg.answer(
-#             'Введите название города, чтобы узнать погоду в нём:\n\nВведите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
-#                 inline_keyboard=[[InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]])
-#         )
-#         await state.set_state(Form.city)
+@router.message(Command("settings"))
+@router.message(F.text.lower() == "настройки")
+async def settings(msg: Message, state: FSMContext):
+    await state.clear()
+    await msg.answer(
+        '⚙️ Настройки бота.\n\n'
+        'Здесь можно будет изменить настройки бота, такие как единицы измерения температуры, язык, любимый город(или города) и другие параметры.\n\n'
+        '⏳ Функционал будет добавлен позже.',
+    )
+    
 
-# Weather(week) outdated
 
-# @router.message(Command("weather_week"))
-# @router.message(F.text.lower() == "узнать погоду на неделю")
-# async def weather_week(msg: Message, state: FSMContext):
-#     await state.clear()
-#     await msg.answer(
-#         'Введите название города, чтобы узнать погоду на неделю в нём:\n\nВведите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
-#             inline_keyboard=[[InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]])
-#     )
-#     await state.set_state(Form.city_week)
+# Commands - end
 
-# Processes
+
+# Processes - start
 
 @router.message(Form.city, F.text)
 async def process_weather(msg: Message, state: FSMContext):
@@ -388,6 +392,9 @@ async def process_weather_week(msg: Message, state: FSMContext):
         logger.exception("Не удалось получить прогноз погоды на неделю для города %r", city)
         await msg.answer(WEATHER_API_DEFAULT_ERROR_MESSAGE)
         return
+
+# Processes - end
+
 
 # Other
 
