@@ -11,11 +11,13 @@
 - Added a Settings button and `/settings` command; the settings section is not implemented yet.
 - Updated `/menu` with the available commands and current button options.
 - Old weekly forecast buttons now show a stale-data notice instead of changing the latest forecast.
+- Improved weather API log messages to show request URLs and parameters more clearly.
 
 #### ru:
 - Добавлены кнопка «Настройки» и команда `/settings`; раздел настроек пока не реализован.
 - Обновлена команда `/menu`: добавлены актуальный список команд и описание кнопок.
 - Старые кнопки недельного прогноза теперь сообщают, что данные устарели, вместо изменения нового прогноза.
+- Улучшены сообщения журнала погоды: URL запросов и параметры теперь отображаются понятнее.
 
 
 ### Changes 1.2.2

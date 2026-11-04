@@ -15,7 +15,7 @@ async def get_json_with_retry(session: aiohttp.ClientSession, url: str, params: 
             async with session.get(url, params=params) as response:
                 if response.status not in retry_statuses:
                     response.raise_for_status()
-                    print(f"//Successfully fetched data from: \n{url, params}\nOn attempt {attempt + 1}//\n")
+                    print(f"//Successfully fetched data from: \n{url}?{url_encode_params(params)}\nOn attempt {attempt + 1}//\n")
                     return await response.json()
 
                 if attempt == max_retries - 1:
@@ -27,7 +27,11 @@ async def get_json_with_retry(session: aiohttp.ClientSession, url: str, params: 
         if attempt < max_retries - 1:
             await asyncio.sleep(2 ** attempt)
 
-    raise RuntimeError(f"//Failed to fetch data from \n{url, params}\nAfter {max_retries} attempts.//\n")
+    raise RuntimeError(f"//Failed to fetch data from \n{url}?{url_encode_params(params)}\nAfter {max_retries} attempts.//\n")
+
+
+def url_encode_params(params: dict[str, Any]) -> str:
+    return "&".join(f"{k}={v}" for k, v in params.items() if v is not None)
 
 
 async def get_weather_current(city: str) -> dict[str, Any] | None:
