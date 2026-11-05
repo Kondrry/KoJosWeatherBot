@@ -242,8 +242,7 @@ async def about(msg: Message, state: FSMContext):
 async def weather(msg: Message, state: FSMContext):
     await state.clear()
     await msg.answer(
-        '🌤️На какой период показать погоду?\n'
-        'Введите /cancel, чтобы отменить действие.',
+        '🌤️На какой период показать погоду?\n',
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="Погода сейчас", callback_data="weather_now"),
