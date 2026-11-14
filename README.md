@@ -1,4 +1,4 @@
-# KoJosWeatherBot
+# KoJosWeatherBot :)
 
 #### eng:
 KoJosWeatherBot is a Telegram weather bot built with Python and aiogram. It provides current weather and weekly forecasts, supports Russian and English, and lets each user save and search by a favorite city. Weather data is provided by Open-Meteo.
