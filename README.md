@@ -6,6 +6,58 @@ KoJosWeatherBot is a Telegram weather bot built with Python and aiogram. It prov
 #### ru:
 KoJosWeatherBot — телеграм-бот о погоде, созданный на Python и aiogram. Он показывает текущую погоду и прогноз на неделю, поддерживает русский и английский языки и позволяет сохранять любимый город для быстрого поиска. Данные о погоде предоставляет Open-Meteo.
 
+## Run locally (Windows / PowerShell)
+
+1. Install Python 3.10 or newer.
+2. Create a virtual environment and install dependencies:
+
+   ```powershell
+   py -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+   ```
+
+3. Create `.env` from the example and add your Telegram bot token:
+
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+   Open `.env` and replace the example value for `BOT_TOKEN`. Never commit this file.
+
+4. Start the bot from the project directory:
+
+   ```powershell
+   .\.venv\Scripts\python.exe main.py
+   ```
+
+The SQLite database is created automatically on first startup. Keep `.env` and `weather_report_bot.db` private.
+
+## Запуск локально (Windows / PowerShell)
+
+1. Установи Python версии 3.10 или новее.
+2. Создай виртуальное окружение и установи зависимости:
+
+   ```powershell
+   py -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+   ```
+
+3. Создай `.env` по примеру и укажи токен Telegram-бота:
+
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+   Открой `.env` и замени пример на свой `BOT_TOKEN`. Не добавляй этот файл в Git.
+
+4. Запусти бота из папки проекта:
+
+   ```powershell
+   .\.venv\Scripts\python.exe main.py
+   ```
+
+При первом запуске SQLite-база создаётся автоматически. Не публикуй `.env` и `weather_report_bot.db`.
+
 # Version 1.3.0
 ## *My *First Project* In **Python***
 
