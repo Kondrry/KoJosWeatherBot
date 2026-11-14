@@ -44,8 +44,11 @@ TRANSLATIONS = {
                 "«Меню». Во время прогноза нажми «Изменить город», чтобы выбрать другой город."
             ),
             "about": (
-                "👋 Привет, {first_name}!\n\n🌤️ Это бот для получения информации о погоде.\n\n"
-                "👨‍💻 Мой создатель — @nokojo81\n\n⏳ Информация будет добавлена позже."
+                "👋 Привет, {first_name}!\n\n"
+                "🌤️ Я показываю текущую погоду и прогноз на неделю для выбранного или любимого города.\n"
+                "🌐 Доступны русский и английский языки.\n\n"
+                "Данные о погоде предоставляет Open-Meteo.\n"
+                "👨‍💻 Создатель — @nokojo81."
             ),
             "weather_period": "🌤️ На какой период показать погоду?\n",
             "settings": (
@@ -221,8 +224,11 @@ TRANSLATIONS = {
                 "During a weekly forecast, press “Change city” to look up another city."
             ),
             "about": (
-                "👋 Hi, {first_name}!\n\n🌤️ This bot provides weather information.\n\n"
-                "👨‍💻 Created by @nokojo81\n\n⏳ More information will be added later."
+                "👋 Hi, {first_name}!\n\n"
+                "🌤️ I provide current weather and weekly forecasts for any city or your favorite city.\n"
+                "🌐 Available in Russian and English.\n\n"
+                "Weather data is provided by Open-Meteo.\n"
+                "👨‍💻 Created by @nokojo81."
             ),
             "weather_period": "🌤️ Which forecast would you like to see?\n",
             "settings": (
