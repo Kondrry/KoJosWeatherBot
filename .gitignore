@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 .vscode/
 weather_report_bot.db
+about.txt
