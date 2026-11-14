@@ -3,7 +3,7 @@ import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 from dotenv import load_dotenv
-from handlers.routes import router
+from handlers.routes import init_db, router
 
 load_dotenv()
 TOKEN = getenv("BOT_TOKEN")
@@ -23,6 +23,7 @@ bot_commands = [
 async def main():
     bot = Bot(token=TOKEN)
     await bot.set_my_commands(bot_commands)
+    await init_db()
 
     print('Start...')
     await dp.start_polling(bot)

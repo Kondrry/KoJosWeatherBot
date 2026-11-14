@@ -1,12 +1,10 @@
 import asyncio
 import logging
 from typing import Any
+from translations import TRANSLATIONS
 from weather_api import (
     get_weather_current,
     get_weather_week,
-    WEATHER_DESCRIPTIONS,
-    WEATHER_API_ERROR_MESSAGES,
-    WEATHER_API_DEFAULT_ERROR_MESSAGE,
     get_wind_direction,
     get_weekday,
 )
@@ -18,47 +16,190 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
     InlineKeyboardMarkup,
-    InlineKeyboardButton
+    InlineKeyboardButton,
+    BotCommand,
+    BotCommandScopeChat,
 )
 from forms.user_info import Form
 from aiogram.fsm.context import FSMContext
 import aiohttp
+import aiosqlite
 
 router = Router()
 logger = logging.getLogger(__name__)
 
+# My first db interaction!!!(except translation)!!! last update :\ i guess
+
+DB_NAME = "weather_report_bot.db"
+
+def translate(language, section, key, **values):
+    catalog = TRANSLATIONS.get(language, TRANSLATIONS["ru"])
+    return catalog[section][key].format(**values)
+
+
+def button_text_filter(button_key):
+    labels = {
+        catalog["buttons"][button_key].casefold()
+        for catalog in TRANSLATIONS.values()
+    }
+    return lambda message: message.text is not None and message.text.casefold() in labels
+
+
+async def init_db():
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY,
+                username TEXT,
+                fav_city TEXT,
+                language TEXT NOT NULL DEFAULT 'ru'
+                )
+        """)
+        cursor = await db.execute("PRAGMA table_info(users)")
+        columns = {row[1] for row in await cursor.fetchall()}
+        if "language" not in columns:
+            await db.execute(
+                "ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'ru'"
+            )
+        await db.commit()
+
+
+async def get_user_language(user_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute(
+            "SELECT language FROM users WHERE id = ?",
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+    if row and row[0] in TRANSLATIONS:
+        return row[0]
+    return "ru"
+
+
+async def set_user_language(user_id, username, language):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            """
+            INSERT INTO users (id, username, language)
+            VALUES (?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                username = excluded.username,
+                language = excluded.language
+            """,
+            (user_id, username, language),
+        )
+        await db.commit()
+
+
+async def add_fav_city(user_id, username, fav_city):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            """
+            INSERT INTO users (id, username, fav_city)
+            VALUES (?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                username = excluded.username,
+                fav_city = excluded.fav_city
+            """,
+            (user_id, username, fav_city),
+        )
+        await db.commit()
+
+
+async def get_fav_city(user_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute(
+            "SELECT fav_city FROM users WHERE id = ?",
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+    return row[0] if row and row[0] else None
+
+
+async def get_fav_city_or_prompt(message: Message, user_id: int, language: str):
+    fav_city = await get_fav_city(user_id)
+    if fav_city:
+        return fav_city
+
+    await message.answer(
+        translate(language, "messages", "fav_city_missing"),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text=TRANSLATIONS[language]["buttons"]["change_fav_city"],
+                    callback_data="change_fav_city",
+                )
+            ]]
+        ),
+    )
+    return None
+
+
+async def get_users():
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("SELECT * FROM users")
+        result = await cursor.fetchall()
+        return result 
+
 
 # Keyboards - start
 
-def get_menu_reply_keyboard():
+def get_menu_reply_keyboard(language="ru"):
+    buttons = TRANSLATIONS[language]["buttons"]
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Узнать погоду")],
-            [KeyboardButton(text="О боте"), KeyboardButton(text="Меню"), KeyboardButton(text="Перезапустить бота")],
-            [KeyboardButton(text="Настройки")]
+            [KeyboardButton(text=buttons["weather"])],
+            [
+                KeyboardButton(text=buttons["about"]),
+                KeyboardButton(text=buttons["menu"]),
+                KeyboardButton(text=buttons["restart"]),
+            ],
+            [KeyboardButton(text=buttons["settings"])],
         ],
         resize_keyboard=True
     )
 
     return keyboard
 
-def get_about_inline_keyboard():
+def get_about_inline_keyboard(language="ru"):
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Связаться с разработчиком", url="https://t.me/nokojo81")],
-            [InlineKeyboardButton(text="Подробнее", callback_data="more_info")]
+            [
+                InlineKeyboardButton(
+                    text=TRANSLATIONS[language]["buttons"]["contact_developer"],
+                    url="https://t.me/nokojo81",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=TRANSLATIONS[language]["buttons"]["more_info"],
+                    callback_data="more_info",
+                )
+            ],
         ]
     )
 
     return keyboard
 
-def get_weather_week_keyboard(day_index: int, dates: list[str]):
+def get_weather_week_keyboard(day_index: int, dates: list[str], language: str = "ru"):
     day_index %= len(dates)
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="<", callback_data="previous_day"), InlineKeyboardButton(text=get_weekday(dates[day_index]), callback_data=f"day_{day_index}"), InlineKeyboardButton(text=">", callback_data="next_day")],
-            [InlineKeyboardButton(text="Изменить город", callback_data="change_city_week")],
+            [
+                InlineKeyboardButton(text="<", callback_data="previous_day"),
+                InlineKeyboardButton(
+                    text=get_weekday(dates[day_index], language),
+                    callback_data=f"day_{day_index}",
+                ),
+                InlineKeyboardButton(text=">", callback_data="next_day"),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=TRANSLATIONS[language]["buttons"]["change_city"],
+                    callback_data="change_city_week",
+                )
+            ],
         ]
     )
 
@@ -68,28 +209,41 @@ def get_weather_week_keyboard(day_index: int, dates: list[str]):
 
 # Weather formatting and display functions - start
 
-def format_weather_week_day(place_name: str, daily: dict[str, Any], day_index: int) -> str:
+def format_weather_week_day(
+    place_name: str,
+    daily: dict[str, Any],
+    day_index: int,
+    language: str = "ru",
+) -> str:
     weather_code = daily["weather_code"][day_index]
-    wind_direction = get_wind_direction(daily["wind_direction_10m_dominant"][day_index])
     date = daily["time"][day_index]
-    
-    return (
-        f'🌤️ Погода в городе {place_name} на {get_weekday(date)}, {date}:\n\n'
-        f'Температура: от {daily["temperature_2m_min"][day_index]}°C '
-        f'до {daily["temperature_2m_max"][day_index]}°C\n'
-        f'Ощущаемая температура: от {daily["apparent_temperature_min"][day_index]}°C '
-        f'до {daily["apparent_temperature_max"][day_index]}°C\n'
-        f'Осадки: {daily["precipitation_sum"][day_index]} мм\n'
-        f'Ветер: до {daily["wind_speed_10m_max"][day_index]} м/с,\n'
-        f'Направление ветра: {wind_direction}\n'
-        f'Погода: {WEATHER_DESCRIPTIONS.get(weather_code, "Неизвестные условия")}\n\n'
-        f'ℹИсточник: Open-Meteo.'
+    weather = TRANSLATIONS[language]["weather"]
+
+    return translate(
+        language,
+        "weather",
+        "weekly_template",
+        place_name=place_name,
+        weekday=get_weekday(date, language),
+        date=date,
+        temperature_min=daily["temperature_2m_min"][day_index],
+        temperature_max=daily["temperature_2m_max"][day_index],
+        apparent_temperature_min=daily["apparent_temperature_min"][day_index],
+        apparent_temperature_max=daily["apparent_temperature_max"][day_index],
+        precipitation=daily["precipitation_sum"][day_index],
+        wind_speed_max=daily["wind_speed_10m_max"][day_index],
+        wind_direction=get_wind_direction(
+            daily["wind_direction_10m_dominant"][day_index],
+            language,
+        ),
+        description=weather["descriptions"].get(weather_code, weather["unknown"]),
     )
 
 async def show_weather_week_day(callback: CallbackQuery, state: FSMContext, day_index: int) -> None:
     data = await state.get_data()
     daily = data.get("week_daily")
     place_name = data.get("week_place_name")
+    language = await get_user_language(callback.from_user.id)
     if (
         not callback.message
         or callback.message.message_id != data.get("week_message_id")
@@ -97,15 +251,18 @@ async def show_weather_week_day(callback: CallbackQuery, state: FSMContext, day_
         or not place_name
         or not daily.get("time")
     ):
-        await callback.answer("Данные прогноза устарели. Запросите прогноз заново.", show_alert=True)
+        await callback.answer(
+            translate(language, "messages", "stale_forecast"),
+            show_alert=True,
+        )
         return
 
     dates = daily["time"]
     day_index %= len(dates)
     await state.update_data(day_index=day_index)
     await callback.message.edit_text(
-        format_weather_week_day(place_name, daily, day_index),
-        reply_markup=get_weather_week_keyboard(day_index, dates)
+        format_weather_week_day(place_name, daily, day_index, language),
+        reply_markup=get_weather_week_keyboard(day_index, dates, language),
     )
     await callback.answer()
 
@@ -121,14 +278,18 @@ async def process_change_day(callback: CallbackQuery, state: FSMContext):
     step = 1 if callback.data == "next_day" else -1
     daily = data.get("week_daily")
     if not daily or not daily.get("time"):
-        await callback.answer("Данные прогноза устарели. Запросите прогноз заново.", show_alert=True)
+        language = await get_user_language(callback.from_user.id)
+        await callback.answer(
+            translate(language, "messages", "stale_forecast"),
+            show_alert=True,
+        )
         return
 
     day_index = (day_index + step) % len(daily["time"])
     await show_weather_week_day(callback, state, day_index)
 
     
-@router.callback_query(F.data.startswith("day_"))
+@router.callback_query(lambda c: c.data.startswith("day_"))
 async def process_select_day(callback: CallbackQuery, state: FSMContext):
     day_index = int(callback.data.rsplit("_", 1)[1])
     data = await state.get_data()
@@ -136,55 +297,212 @@ async def process_select_day(callback: CallbackQuery, state: FSMContext):
         await show_weather_week_day(callback, state, day_index)
         return
     if day_index == data.get("day_index", 0):
-        await callback.answer("Этот день уже выбран.")
+        language = await get_user_language(callback.from_user.id)
+        await callback.answer(
+            translate(language, "messages", "day_already_selected")
+        )
         return
     await show_weather_week_day(callback, state, day_index)
 
 @router.callback_query(lambda c: c.data == "more_info")
 async def process_more_info(callback: CallbackQuery):
-    await callback.message.answer("ℹ️ Дополнительная информация о боте.")
+    language = await get_user_language(callback.from_user.id)
+    await callback.message.answer(translate(language, "messages", "more_info"))
     await callback.answer()
 
 @router.callback_query(lambda c: c.data == "cancel")
 async def process_cancel(callback: CallbackQuery, state: FSMContext):
+    language = await get_user_language(callback.from_user.id)
     await state.clear()
-    await callback.message.answer('❌ Действие отменено.')
+    await callback.message.answer(translate(language, "messages", "cancelled"))
     await callback.answer()
 
 @router.callback_query(lambda c: c.data == "change_city")
 async def process_change_city(callback: CallbackQuery, state: FSMContext):
+    language = await get_user_language(callback.from_user.id)
     await callback.message.answer(
-        '🌦️ Введите новое название города, чтобы узнать погоду в нём:\n\n❌ Введите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]])
+        translate(language, "messages", "change_city"),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text=TRANSLATIONS[language]["buttons"]["cancel"],
+                    callback_data="cancel",
+                )
+            ]]
+        ),
     )
     await state.set_state(Form.city)
     await callback.answer()
 
 @router.callback_query(lambda c: c.data == "change_city_week")
 async def process_change_city_week(callback: CallbackQuery, state: FSMContext):
+    language = await get_user_language(callback.from_user.id)
     await callback.message.answer(
-        '📅 Введите новое название города, чтобы узнать погоду на неделю в нём:\n\n❌ Введите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]])
+        translate(language, "messages", "change_city_week"),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text=TRANSLATIONS[language]["buttons"]["cancel"],
+                    callback_data="cancel",
+                )
+            ]]
+        ),
     )
     await state.set_state(Form.city_week)
     await callback.answer()
 
 @router.callback_query(lambda c: c.data == "weather_now")
 async def process_weather_now(callback: CallbackQuery, state: FSMContext):
+    language = await get_user_language(callback.from_user.id)
+    if (await state.get_data()).get("fav_city_search_enabled", False):
+        await callback.answer()
+        city = await get_fav_city_or_prompt(
+            callback.message,
+            callback.from_user.id,
+            language,
+        )
+        if city:
+            await send_current_weather(callback.message, city, language)
+        return
+
     await callback.message.answer(
-        '🌦️ Введите название города, чтобы узнать погоду в нём:\n\n❌ Введите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
-                 inline_keyboard=[[InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]])
-         )
+        translate(language, "messages", "enter_city"),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text=TRANSLATIONS[language]["buttons"]["cancel"],
+                    callback_data="cancel",
+                )
+            ]]
+        ),
+    )
     await state.set_state(Form.city)
     await callback.answer()
 
 @router.callback_query(lambda c: c.data == 'weather_week')
-async def process_weather_week(callback: CallbackQuery, state: FSMContext):
+async def process_weather_week_choice(callback: CallbackQuery, state: FSMContext):
+    language = await get_user_language(callback.from_user.id)
+    if (await state.get_data()).get("fav_city_search_enabled", False):
+        await callback.answer()
+        city = await get_fav_city_or_prompt(
+            callback.message,
+            callback.from_user.id,
+            language,
+        )
+        if city:
+            await send_weekly_weather(
+                callback.message,
+                state,
+                city,
+                language,
+            )
+        return
+
     await callback.message.answer(
-        '📅 Введите название города, чтобы узнать погоду на неделю в нём:\n\n❌ Введите /cancel, чтобы отменить действие.', reply_markup=InlineKeyboardMarkup(
-             inline_keyboard=[[InlineKeyboardButton(text="Отменить действие", callback_data="cancel")]])
-     )
+        translate(language, "messages", "enter_city_week"),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text=TRANSLATIONS[language]["buttons"]["cancel"],
+                    callback_data="cancel",
+                )
+            ]]
+        ),
+    )
     await state.set_state(Form.city_week)
+    await callback.answer()
+
+@router.callback_query(lambda c: c.data == "change_fav_city")
+async def process_change_fav_city(callback: CallbackQuery, state: FSMContext):
+    language = await get_user_language(callback.from_user.id)
+    await callback.message.answer(
+        translate(language, "messages", "enter_fav_city"),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text=TRANSLATIONS[language]["buttons"]["cancel"],
+                    callback_data="cancel",
+                )
+            ]]
+        ),
+    )
+
+    await state.set_state(Form.fav_city)
+    await callback.answer()
+
+@router.callback_query(lambda c: c.data == "change_language")
+async def process_change_language(callback: CallbackQuery):
+    language = await get_user_language(callback.from_user.id)
+    await callback.message.answer(
+        translate(language, "messages", "language_prompt"),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Русский", callback_data="set_language_ru"),
+                InlineKeyboardButton(text="English", callback_data="set_language_en")],
+            ]
+        )
+    )
+
+    await callback.answer()
+
+@router.callback_query(lambda c: c.data.startswith("set_language_"))
+async def process_set_language(callback: CallbackQuery):
+    language_code = callback.data.split("_")[-1]
+    if language_code not in TRANSLATIONS:
+        current_language = await get_user_language(callback.from_user.id)
+        await callback.answer(
+            translate(current_language, "messages", "language_unavailable"),
+            show_alert=True,
+        )
+        return
+
+    await set_user_language(
+        callback.from_user.id,
+        callback.from_user.username,
+        language_code,
+    )
+    commands = TRANSLATIONS[language_code]["commands"]
+    await callback.bot.set_my_commands(
+        [
+            BotCommand(command="start", description=commands["start"]),
+            BotCommand(command="menu", description=commands["menu"]),
+            BotCommand(command="about", description=commands["about"]),
+            BotCommand(command="weather", description=commands["weather"]),
+            BotCommand(command="cancel", description=commands["cancel"]),
+            BotCommand(command="settings", description=commands["settings"]),
+        ],
+        scope=BotCommandScopeChat(chat_id=callback.from_user.id),
+    )
+    await callback.message.answer(
+        translate(language_code, "messages", "language_saved"),
+        reply_markup=get_menu_reply_keyboard(language_code),
+    )
+    await callback.answer()
+
+@router.callback_query(lambda c: c.data == "fav_city_toggle")
+async def process_fav_city_toggle(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    enabled = not data.get("fav_city_search_enabled", False)
+    await state.update_data(fav_city_search_enabled=enabled)
+
+    language = await get_user_language(callback.from_user.id)
+    buttons = TRANSLATIONS[language]["buttons"]
+    status = " ✅" if enabled else " ❌"
+
+    await callback.message.edit_reply_markup(
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text=buttons["weather_now"], callback_data="weather_now"),
+                InlineKeyboardButton(text=buttons["weather_week"], callback_data="weather_week"),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=buttons["fav_city_search"].format(status=status),
+                    callback_data="fav_city_toggle",
+                )
+            ],
+        ])
+    )
     await callback.answer()
 
 # CQ - end
@@ -195,72 +513,112 @@ async def process_weather_week(callback: CallbackQuery, state: FSMContext):
 # Start
 
 @router.message(Command("start"))
-@router.message(F.text.lower() == "перезапустить бота")
+@router.message(button_text_filter("restart"))
 async def start(msg: Message, state: FSMContext):
+    language = await get_user_language(msg.from_user.id)
     await state.clear()
     await msg.answer(
-        '👋 Привет! Я бот, который *поможет* тебе узнать погоду в любом городе. 🌤️\n\n💬 Напиши /menu, чтобы открыть меню, или нажми кнопку ниже',
+        translate(language, "messages", "start"),
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="Меню")]], resize_keyboard=True)
+            keyboard=[[
+                KeyboardButton(
+                    text=TRANSLATIONS[language]["buttons"]["menu"]
+                )
+            ]],
+            resize_keyboard=True,
+        ),
     )
 
 
 # Menu
 
 @router.message(Command("menu"))
-@router.message(F.text.lower() == "меню")
+@router.message(button_text_filter("menu"))
 async def menu(msg: Message, state: FSMContext):
+    language = await get_user_language(msg.from_user.id)
     await state.clear()
     await msg.answer(
-        '📋 <b>Как пользоваться ботом</b>\n\n'
-        'Нажми «Узнать погоду» или введи /weather, выбери текущую погоду либо прогноз на неделю и отправь название города, например: <i>Москва</i> или <i>New York</i>.\n\n'
-        '🌤️ <b>Команды</b>\n'
-        '<b>/start</b> — запустить или перезапустить бота\n'
-        '<b>/weather</b> — выбрать текущую погоду или прогноз на неделю\n'
-        '<b>/settings</b> — открыть настройки (раздел в разработке)\n'
-        '<b>/about</b> — информация о боте\n'
-        '<b>/menu</b> — показать это меню\n'
-        '<b>/cancel</b> — отменить текущее действие\n\n'
-        'Также можно воспользоваться кнопками «Узнать погоду», «Настройки», «О боте» и «Меню». Во время прогноза нажми «Изменить город», чтобы выбрать другой город.',
-        parse_mode="HTML", reply_markup=get_menu_reply_keyboard())
+        translate(language, "messages", "menu"),
+        parse_mode="HTML",
+        reply_markup=get_menu_reply_keyboard(language),
+    )
 
 # About
 
 @router.message(Command("about"))
-@router.message(F.text.lower() == "о боте")
+@router.message(button_text_filter("about"))
 async def about(msg: Message, state: FSMContext):
+    language = await get_user_language(msg.from_user.id)
     await state.clear()
     await msg.answer(
-        f'👋 Привет, {msg.from_user.first_name}! \n\n🌤️ Это бот для получения информации о погоде.\n\n👨‍💻 Мой создатель - @nokojo81\n\n⏳ Информация будет добавлена позже.',
-        reply_markup=get_about_inline_keyboard())
+        translate(
+            language,
+            "messages",
+            "about",
+            first_name=msg.from_user.first_name,
+        ),
+        reply_markup=get_about_inline_keyboard(language),
+    )
 
 # Weather
 
 @router.message(Command('weather'))
-@router.message(F.text.lower() == "узнать погоду")
+@router.message(button_text_filter("weather"))
 async def weather(msg: Message, state: FSMContext):
+    language = await get_user_language(msg.from_user.id)
+    buttons = TRANSLATIONS[language]["buttons"]
     await state.clear()
     await msg.answer(
-        '🌤️На какой период показать погоду?\n',
+        translate(language, "messages", "weather_period"),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="Погода сейчас", callback_data="weather_now"),
-                 InlineKeyboardButton(text="Погода на неделю", callback_data="weather_week")],
+                [
+                    InlineKeyboardButton(
+                        text=buttons["weather_now"],
+                        callback_data="weather_now",
+                    ),
+                    InlineKeyboardButton(
+                        text=buttons["weather_week"],
+                        callback_data="weather_week",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text=buttons["fav_city_search"].format(status=" ❌"),
+                        callback_data="fav_city_toggle",
+                    )
+                ]
             ]
-        )
+        ),
     )
 
 # Settings
 
 @router.message(Command("settings"))
-@router.message(F.text.lower() == "настройки")
+@router.message(button_text_filter("settings"))
 async def settings(msg: Message, state: FSMContext):
+    language = await get_user_language(msg.from_user.id)
+    buttons = TRANSLATIONS[language]["buttons"]
     await state.clear()
     await msg.answer(
-        '⚙️ Настройки бота.\n\n'
-        'Здесь можно будет изменить настройки бота, такие как единицы измерения температуры, язык, любимый город(или города) и другие параметры.\n\n'
-        '⏳ Функционал будет добавлен позже.',
+        translate(language, "messages", "settings"),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=buttons["change_fav_city"],
+                        callback_data="change_fav_city",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text=buttons["change_language"],
+                        callback_data="change_language",
+                    )
+                ],
+            ]
+        ),
     )
     
 
@@ -272,33 +630,31 @@ async def settings(msg: Message, state: FSMContext):
 
 @router.message(Form.city, F.text)
 async def process_weather(msg: Message, state: FSMContext):
+    language = await get_user_language(msg.from_user.id)
     city = msg.text.strip()
     if not city:
-        await msg.answer('❌ Введите название города.')
+        await msg.answer(translate(language, "messages", "empty_city"))
         return
 
-    await msg.answer(f'🔎 Ищу погоду в городе: {city}...')
+    await send_current_weather(msg, city, language)
+
+
+async def send_current_weather(msg: Message, city: str, language: str):
+    await msg.answer(
+        translate(language, "messages", "searching_current", city=city)
+    )
 
     try:
-        weather_info = await get_weather_current(city)
+        weather_info = await get_weather_current(city, language)
         if weather_info is None:
-            await msg.answer(f'❌ Не удалось найти погоду для города: {city}. Пожалуйста, проверьте правильность написания и попробуйте снова.')
+            await msg.answer(
+                translate(language, "messages", "city_not_found", city=city)
+            )
             return
 
         location = weather_info["location"]
         current = weather_info["current"]
         weather_code = current["weather_code"]
-        wind_direction = get_wind_direction(current["wind_direction_10m"])
-        # меньше писать но труднее понять --\\
-        
-        # place_name = ", ".join(
-        #     part
-        #     for part in (location.get("name"), location.get("admin1"), location.get("country"))
-        #     if part
-        # )
-        # --//
-
-        # больше писать но легче понять --\\
         parts = []
         for part in (
             location.get("name"),
@@ -308,50 +664,81 @@ async def process_weather(msg: Message, state: FSMContext):
                 parts.append(part)
 
         place_name = ", ".join(parts)
-        # --//
-
         date = current["time"].split("T")[0]
+        weather = TRANSLATIONS[language]["weather"]
 
         await msg.answer(
-            f'🌤️ Погода в городе {place_name} на {get_weekday(date)}, {date}:\n\n'
-            f'Температура: {current["temperature_2m"]}°C\n'
-            f'Ощущается как: {current["apparent_temperature"]}°C\n'
-            f'Влажность воздуха: {current["relative_humidity_2m"]}%\n'
-            f'Время суток: {"день" if current["is_day"] else "ночь"}\n'
-            f'Ветер: {current["wind_speed_10m"]} м/с\n'
-            f'Направление ветра: {wind_direction}\n'
-            f'Погода: {WEATHER_DESCRIPTIONS.get(weather_code, "Неизвестные условия")}\n\n'
-            f'ℹИсточник: Open-Meteo.',
+            translate(
+                language,
+                "weather",
+                "current_template",
+                place_name=place_name,
+                weekday=get_weekday(date, language),
+                date=date,
+                temperature=current["temperature_2m"],
+                apparent_temperature=current["apparent_temperature"],
+                humidity=current["relative_humidity_2m"],
+                time_of_day=weather["day" if current["is_day"] else "night"],
+                wind_speed=current["wind_speed_10m"],
+                wind_direction=get_wind_direction(
+                    current["wind_direction_10m"],
+                    language,
+                ),
+                description=weather["descriptions"].get(
+                    weather_code,
+                    weather["unknown"],
+                ),
+            ),
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="Изменить город", callback_data="change_city")]])
+                inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text=TRANSLATIONS[language]["buttons"]["change_city"],
+                        callback_data="change_city",
+                    )
+                ]]
+            ),
         )
     except aiohttp.ClientResponseError as error:
         logger.exception("Ошибка сервиса погоды для города %r", city)
+        api_errors = TRANSLATIONS[language]["api_errors"]
         await msg.answer(
-            WEATHER_API_ERROR_MESSAGES.get(
-                error.status,
-                WEATHER_API_DEFAULT_ERROR_MESSAGE,
-            )
+            api_errors.get(error.status, api_errors["default"])
         )
         return
     except (aiohttp.ClientError, asyncio.TimeoutError):
         logger.exception("Не удалось получить прогноз погоды для города %r", city)
-        await msg.answer(WEATHER_API_DEFAULT_ERROR_MESSAGE)
+        await msg.answer(
+            TRANSLATIONS[language]["api_errors"]["default"]
+        )
         return
 
 @router.message(Form.city_week, F.text)
 async def process_weather_week(msg: Message, state: FSMContext):
+    language = await get_user_language(msg.from_user.id)
     city = msg.text.strip()
     if not city:
-        await msg.answer('❌ Введите название города.')
+        await msg.answer(translate(language, "messages", "empty_city"))
         return
 
-    await msg.answer(f'🔎 Ищу погоду на неделю в городе: {city}...')
+    await send_weekly_weather(msg, state, city, language)
+
+
+async def send_weekly_weather(
+    msg: Message,
+    state: FSMContext,
+    city: str,
+    language: str,
+):
+    await msg.answer(
+        translate(language, "messages", "searching_week", city=city)
+    )
 
     try:
-        weather_info = await get_weather_week(city)
+        weather_info = await get_weather_week(city, language)
         if weather_info is None:
-            await msg.answer(f'❌ Не удалось найти погоду для города: {city}. Пожалуйста, проверьте правильность написания и попробуйте снова.')
+            await msg.answer(
+                translate(language, "messages", "city_not_found", city=city)
+            )
             return
 
         location = weather_info["location"]
@@ -365,32 +752,57 @@ async def process_weather_week(msg: Message, state: FSMContext):
             if part:
                 parts.append(part)
         place_name = ", ".join(parts)
+        fav_city_search_enabled = (await state.get_data()).get(
+            "fav_city_search_enabled",
+            False,
+        )
         await state.clear()
         await state.update_data(
             week_daily=daily,
             week_place_name=place_name,
             day_index=0,
+            language=language,
+            fav_city_search_enabled=fav_city_search_enabled,
         )
 
         forecast_message = await msg.answer(
-            format_weather_week_day(place_name, daily, 0),
-            reply_markup=get_weather_week_keyboard(0, daily["time"])
+            format_weather_week_day(place_name, daily, 0, language),
+            reply_markup=get_weather_week_keyboard(0, daily["time"], language)
         )
         await state.update_data(week_message_id=forecast_message.message_id)
 
     except aiohttp.ClientResponseError as error:
         logger.exception("Ошибка сервиса погоды для города %r", city)
+        api_errors = TRANSLATIONS[language]["api_errors"]
         await msg.answer(
-            WEATHER_API_ERROR_MESSAGES.get(
-                error.status,
-                WEATHER_API_DEFAULT_ERROR_MESSAGE,
-            )
+            api_errors.get(error.status, api_errors["default"])
         )
         return
     except (aiohttp.ClientError, asyncio.TimeoutError):
         logger.exception("Не удалось получить прогноз погоды на неделю для города %r", city)
-        await msg.answer(WEATHER_API_DEFAULT_ERROR_MESSAGE)
+        await msg.answer(
+            TRANSLATIONS[language]["api_errors"]["default"]
+        )
         return
+
+@router.message(Form.fav_city, F.text)
+async def process_fav_city(msg: Message, state: FSMContext):
+    language = await get_user_language(msg.from_user.id)
+    fav_city = msg.text.strip()
+    if not fav_city:
+        await msg.answer(translate(language, "messages", "empty_city"))
+        return
+
+    await add_fav_city(msg.from_user.id, msg.from_user.username, fav_city)
+    fav_city_search_enabled = (await state.get_data()).get(
+        "fav_city_search_enabled",
+        False,
+    )
+    await state.clear()
+    await state.update_data(fav_city_search_enabled=fav_city_search_enabled)
+    await msg.answer(
+        translate(language, "messages", "fav_city_saved", city=fav_city)
+    )
 
 # Processes - end
 
@@ -399,9 +811,11 @@ async def process_weather_week(msg: Message, state: FSMContext):
 
 @router.message(Command("cancel"))
 async def cancel(msg: Message, state: FSMContext):
+    language = await get_user_language(msg.from_user.id)
     await state.clear()
-    await msg.answer('❌ Действие отменено.')
+    await msg.answer(translate(language, "messages", "cancelled"))
 
 @router.message()
 async def handle_message(msg: Message):
-    await msg.answer('❌ Извини, я пока не умею обрабатывать сообщения, кроме команд. Пожалуйста, просмотри список доступных команд:\n /menu 🌤️')
+    language = await get_user_language(msg.from_user.id)
+    await msg.answer(translate(language, "messages", "unhandled_message"))

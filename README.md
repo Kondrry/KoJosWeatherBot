@@ -1,9 +1,21 @@
 ## Описание будет добавлено позже...
 
-# Version 1.2.3
+# Version 1.3.0
 ## @KoJosWeatherBot telegram bot in development
 ## *My *First Project* In **Python***
 
+
+
+### Changes 1.3.0
+#### eng:
+- Added Russian and English language selection, with each user's preference saved in the database.
+- Added an option to get current weather or a weekly forecast using the saved favorite city.
+- Localized bot messages, keyboards, weather descriptions, wind directions, weekdays, and command descriptions.
+
+#### ru:
+- Добавлен выбор русского и английского языков с сохранением настройки каждого пользователя в базе данных.
+- Добавлена возможность получать текущую погоду и прогноз на неделю для сохранённого любимого города.
+- Переведены сообщения и кнопки бота, описания погоды, направления ветра, дни недели и описания команд.
 
 
 ### Changes 1.2.3

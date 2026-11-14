@@ -4,6 +4,7 @@ from typing import Any
 import ssl
 import aiohttp
 import certifi
+from translations import TRANSLATIONS
 
 
 async def get_json_with_retry(session: aiohttp.ClientSession, url: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -34,7 +35,7 @@ def url_encode_params(params: dict[str, Any]) -> str:
     return "&".join(f"{k}={v}" for k, v in params.items() if v is not None)
 
 
-async def get_weather_current(city: str) -> dict[str, Any] | None:
+async def get_weather_current(city: str, language: str = "ru") -> dict[str, Any] | None:
     timeout = aiohttp.ClientTimeout(total=10)
     ssl_context = ssl.create_default_context(cafile=certifi.where())
     connector = aiohttp.TCPConnector(ssl=ssl_context)
@@ -45,7 +46,7 @@ async def get_weather_current(city: str) -> dict[str, Any] | None:
         geocoding_data = await get_json_with_retry(
             session,
             "https://geocoding-api.open-meteo.com/v1/search",
-            params={"name": city, "count": 1, "language": "ru"},
+            params={"name": city, "count": 1, "language": language},
         )
 
         locations = geocoding_data.get("results")
@@ -74,7 +75,7 @@ async def get_weather_current(city: str) -> dict[str, Any] | None:
     }
 
 
-async def get_weather_week(city: str) -> dict[str, Any] | None:
+async def get_weather_week(city: str, language: str = "ru") -> dict[str, Any] | None:
     timeout = aiohttp.ClientTimeout(total=10)
     ssl_context = ssl.create_default_context(cafile=certifi.where())
     connector = aiohttp.TCPConnector(ssl=ssl_context)
@@ -85,7 +86,7 @@ async def get_weather_week(city: str) -> dict[str, Any] | None:
         geocoding_data = await get_json_with_retry(
             session,
             "https://geocoding-api.open-meteo.com/v1/search",
-            params={"name": city, "count": 1, "language": "ru"},
+            params={"name": city, "count": 1, "language": language},
         )
 
         locations = geocoding_data.get("results")
@@ -157,21 +158,16 @@ WEATHER_API_DEFAULT_ERROR_MESSAGE = (
     "❌ Не удалось связаться с сервисом погоды. Пожалуйста, попробуйте позже."
 )
 
-def get_wind_direction(degrees):
+def get_wind_direction(degrees, language: str = "ru"):
     if degrees is None:
-        return "Неизвестно"
+        return TRANSLATIONS.get(language, TRANSLATIONS["ru"])["weather"]["unknown_wind"]
 
-    directions = [
-        "Север (С)", "Северо-северо-восток (ССВ)", "Северо-восток (СВ)", "Востоко-северо-восток (ВСВ)",
-        "Восток (В)", "Востоко-юго-восток (ВЮВ)", "Юго-восток (ЮВ)", "Юго-юго-восток (ЮЮВ)",
-        "Юг (Ю)", "Юго-юго-запад (ЮЮЗ)", "Юго-запад (ЮЗ)", "Западо-юго-запад (ЗЮЗ)",
-        "Запад (З)", "Западо-северо-запад (ЗСЗ)", "Северо-запад (СЗ)", "Северо-северо-запад (ССЗ)"
-    ]
-
+    directions = TRANSLATIONS.get(language, TRANSLATIONS["ru"])["weather"]["wind_directions"]
     index = int((degrees + 11.25) / 22.5) % 16
     return directions[index]
 
 
-def get_weekday(date_str: str) -> str:
+def get_weekday(date_str: str, language: str = "ru") -> str:
     day = date.fromisoformat(date_str)
-    return WEEKDAYS[day.weekday()]
+    weekdays = TRANSLATIONS.get(language, TRANSLATIONS["ru"])["weather"]["weekdays_short"]
+    return weekdays[day.weekday()]
